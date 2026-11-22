@@ -1,0 +1,12 @@
+/target
+/dist/
+**/*.rs.bk
+*.pdb
+
+# Редакторы и системные файлы
+.DS_Store
+.idea/
+.vscode/
+
+# Локальные заметки
+AGENTS.md

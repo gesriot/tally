@@ -1,0 +1,54 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/gesriot/tally"
+publish = false
+
+[workspace.dependencies]
+slint = { version = "1.19", default-features = false, features = [
+    "std",
+    "backend-winit",
+    "compat-1-2",
+    "accessibility",
+] }
+slint-build = "1.19"
+tally-rank = { path = "crates/tally-rank" }
+tally-core = { path = "crates/tally-core" }
+tally-store = { path = "crates/tally-store" }
+tally-when = { path = "crates/tally-when" }
+tally-app = { path = "crates/tally-app" }
+tally-client = { path = "crates/tally-client" }
+jiff = { version = "1.0", default-features = false, features = ["std", "serde"] }
+uuid = { version = "1.29", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2"
+proptest = "1.12"
+rusqlite = { version = "0.43", features = ["bundled"] }
+unicode-normalization = "0.1"
+tempfile = "3"
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1"
+directories = "6"
+assert_cmd = "2"
+predicates = "3"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused = { level = "warn", priority = -1 }
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.release]
+strip = true

@@ -1,0 +1,126 @@
+import { Button, LineEdit, TextEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export component QuickEntry inherits Window {
+    title: "Быстрый ввод – Tally";
+    icon: Theme.app-icon;
+    default-font-family: Theme.font;
+    preferred-width: 490px;
+    min-width: 360px;
+    background: Theme.window-bg;
+
+    in-out property <string> draft;
+    in-out property <string> notes;
+    in-out property <bool> title-invalid;
+    in property <string> error;
+    in property <bool> busy;
+    callback submit();
+    callback dismiss();
+    public function focus-entry() { entry.focus(); }
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: Theme.gap;
+        Text {
+            text: "Новая задача";
+            color: Theme.text;
+            font-size: Theme.font-page-title;
+        }
+        Rectangle {
+            border-radius: Theme.radius;
+            border-width: root.title-invalid ? 1px : 0px;
+            border-color: Theme.due;
+            VerticalLayout {
+                padding: 1px;
+                entry := LineEdit {
+                    text <=> root.draft;
+                    placeholder-text: "Например, Позвонить завтра";
+                    accessible-label: "Название задачи";
+                    enabled: !root.busy;
+                    edited => { root.title-invalid = false; }
+                    accepted => { root.submit(); }
+                    key-pressed(event) => {
+                        if event.text == Key.Escape { root.dismiss(); return accept; }
+                        return reject;
+                    }
+                }
+            }
+        }
+        TextEdit {
+            text <=> root.notes;
+            placeholder-text: "Заметки";
+            accessible-label: "Заметки";
+            height: Theme.editor-notes-height;
+            enabled: !root.busy;
+            key-pressed(event) => {
+                if event.text == Key.Escape { root.dismiss(); return accept; }
+                if event.text == Key.Return && !event.modifiers.shift {
+                    root.submit();
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        if root.error != "": Text {
+            text: root.error;
+            color: Theme.due;
+            wrap: word-wrap;
+            accessible-role: AccessibleRole.text;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Theme.gap;
+            Button { text: "Закрыть"; clicked => { root.dismiss(); } }
+            Button {
+                text: "Добавить";
+                enabled: !root.busy;
+                clicked => { root.submit(); }
+            }
+        }
+    }
+}
+
+export component ReminderNotice inherits Window {
+    title: "Напоминание – Tally";
+    icon: Theme.app-icon;
+    default-font-family: Theme.font;
+    preferred-width: 410px;
+    background: Theme.window-bg;
+    in-out property <string> body;
+    callback dismiss();
+    public function append-body(text: string) {
+        root.body = root.body == "" ? text : root.body + "\n" + text;
+    }
+    public function clear-body() { root.body = ""; }
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: Theme.gap;
+        TextEdit {
+            text: root.body;
+            wrap: word-wrap;
+            read-only: true;
+            height: 142px;
+            accessible-label: "Напоминания";
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button { text: "Закрыть"; clicked => { root.dismiss(); } }
+        }
+    }
+}
+
+export component DesktopTray inherits SystemTrayIcon {
+    title: "Tally";
+    tooltip: "Tally";
+    icon: @image-url("../../../assets/icon-tray.png");
+    callback open-window();
+    callback open-quick-entry();
+    callback quit();
+    clicked => { root.open-window(); }
+    Menu {
+        MenuItem { title: "Открыть Tally"; activated => { root.open-window(); } }
+        MenuItem { title: "Быстрый ввод"; activated => { root.open-quick-entry(); } }
+        MenuItem { title: "Выход"; activated => { root.quit(); } }
+    }
+}

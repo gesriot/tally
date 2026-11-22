@@ -1,0 +1,43 @@
+import { ComboBox, LineEdit } from "std-widgets.slint";
+import { RepeatDraft, RepeatLabels } from "types.slint";
+import { Theme } from "theme.slint";
+
+export component RepeatFields inherits VerticalLayout {
+    in property <RepeatLabels> labels;
+    in-out property <RepeatDraft> draft;
+    in property <bool> enabled: true;
+    callback shortcuts(KeyEvent) -> bool;
+    callback applied();
+    spacing: Theme.gap-small;
+
+    HorizontalLayout {
+        spacing: Theme.gap-small;
+        interval := LineEdit {
+            init => { self.focus(); }
+            width: 78px;
+            text: root.draft.interval;
+            edited(value) => { root.draft.interval = value; }
+            enabled: root.enabled;
+            accessible-label: root.labels.interval;
+            accepted => { root.applied(); }
+            key-pressed(event) => {
+                if root.shortcuts(event) { return accept; }
+                return reject;
+            }
+        }
+        ComboBox {
+            model: root.labels.units;
+            current-index: root.draft.unit;
+            selected => { root.draft.unit = self.current-index; }
+            accessible-label: root.labels.unit;
+            enabled: root.enabled;
+        }
+    }
+    ComboBox {
+        model: root.labels.modes;
+        current-index: root.draft.mode;
+        selected => { root.draft.mode = self.current-index; }
+        accessible-label: root.labels.mode;
+        enabled: root.enabled;
+    }
+}

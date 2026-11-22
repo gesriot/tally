@@ -1,0 +1,908 @@
+// Окно Tally: боковая панель и список. Только отображение: строки,
+// тексты и решения приходят из Rust (`view.rs`, `strings.rs`, `keys.rs`).
+
+import "../../../assets/fonts/Inter-Regular.ttf";
+import "../../../assets/fonts/Inter-SemiBold.ttf";
+import { Button, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { TaskEditor } from "editor.slint";
+import { RepeatDraft, RepeatLabels } from "types.slint";
+import { OrganizationEditor } from "organization.slint";
+import { DragPreview } from "drag.slint";
+export { QuickEntry, DesktopTray, ReminderNotice } from "desktop.slint";
+export { SettingsWindow } from "settings.slint";
+import { DropSurface, PositionedTask, PositionedSide } from "types.slint";
+export { DropSurface, PositionedTask, PositionedSide }
+import { OrganizationAction, OrganizationLabels, OrganizationMode, OrganizationPage, OrganizationSubmit } from "types.slint";
+
+export { OrganizationAction, OrganizationLabels, OrganizationMode, OrganizationPage, OrganizationSubmit }
+import { SideKind, Icon, RowKind, Mark, SideItem, RowItem, EditorLabels, EditorFocus, EditorCheck, EditorTag } from "types.slint";
+import { Glyph, Star, Flag, Check, Cross } from "icons.slint";
+
+export { Theme, SideKind, Icon, RowKind, Mark, SideItem, RowItem, EditorLabels, EditorFocus, EditorCheck, EditorTag }
+
+component SideRow inherits Rectangle {
+    in property <SideItem> item;
+    in property <bool> drop-hover;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: item.kind == SideKind.gap ? Theme.side-gap-height : Theme.side-row-height;
+    border-radius: Theme.radius;
+    background: root.drop-hover ? Theme.editor-selection : item.selected ? Theme.sidebar-selected
+        : (touch.has-hover && item.kind != SideKind.gap) ? Theme.sidebar-hover : transparent;
+    border-width: root.drop-hover ? 1px : 0px;
+    border-color: Theme.accent;
+    animate background, border-width { duration: Theme.drag-fade; easing: ease-out; }
+    accessible-role: AccessibleRole.list-item;
+    accessible-label: item.title;
+    accessible-item-selectable: item.kind != SideKind.gap;
+    accessible-item-selected: item.selected;
+    accessible-enabled: root.enabled && item.kind != SideKind.gap;
+    accessible-action-default => { if root.enabled { root.clicked(); } }
+
+    touch := TouchArea {
+        enabled: root.enabled && item.kind != SideKind.gap;
+        clicked => { root.clicked(); }
+    }
+
+    if item.kind != SideKind.gap: HorizontalLayout {
+        padding-left: Theme.row-padding-x + (item.nested ? Theme.sidebar-project-indent : 0px);
+        padding-right: Theme.row-padding-x;
+        spacing: Theme.gap;
+        alignment: stretch;
+        Glyph {
+            y: (parent.height - self.height) / 2;
+            icon: item.icon;
+            progress: item.progress;
+        }
+        Text {
+            text: item.title;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+            color: Theme.text;
+            font-size: Theme.font-sidebar;
+            font-weight: item.kind == SideKind.area ? Theme.weight-semibold : Theme.weight-regular;
+        }
+        if item.count != "": Text {
+            text: item.count;
+            vertical-alignment: center;
+            color: item.due ? Theme.due : Theme.text-muted;
+            font-size: Theme.font-small;
+            font-weight: item.due ? Theme.weight-semibold : Theme.weight-regular;
+        }
+    }
+}
+
+component Checkbox inherits Rectangle {
+    in property <Mark> mark;
+    in property <bool> checkable;
+    in property <string> label;
+    callback toggled();
+    width: Theme.checkbox;
+    height: Theme.checkbox;
+    border-radius: 4px;
+    border-width: mark == Mark.open ? 1.5px : 0px;
+    border-color: Theme.checkbox-border;
+    background: mark == Mark.completed ? Theme.checkbox-done
+        : mark == Mark.canceled ? Theme.checkbox-canceled : transparent;
+    accessible-role: AccessibleRole.checkbox;
+    accessible-checkable: true;
+    accessible-checked: mark != Mark.open;
+    accessible-enabled: checkable;
+    accessible-label: label;
+    accessible-action-default => { if checkable { root.toggled(); } }
+
+    if mark == Mark.completed: Check {
+        width: parent.width;
+        height: parent.height;
+    }
+    if mark == Mark.canceled: Cross {
+        width: parent.width;
+        height: parent.height;
+    }
+    TouchArea {
+        // Нажимать удобнее с запасом вокруг квадрата.
+        x: -6px;
+        y: -6px;
+        width: parent.width + 12px;
+        height: parent.height + 12px;
+        enabled: checkable;
+        mouse-cursor: checkable ? MouseCursor.pointer : MouseCursor.default;
+        clicked => { root.toggled(); }
+    }
+}
+
+component TaskRow inherits Rectangle {
+    in property <RowItem> item;
+    in property <bool> selected;
+    in property <bool> editing;
+    in property <bool> task-actions: true;
+    in property <bool> search-result;
+    in property <bool> organization-active;
+    in property <bool> drag-source;
+    in property <bool> drop-hover;
+    in property <string> edit-label;
+    in property <string> trash-label;
+    in property <bool> in-trash;
+    callback trash();
+    callback drag-begin() -> bool;
+    callback drag-move(length, length);
+    callback drag-release(length, length, bool);
+    callback toggled();
+    callback opened();
+    callback selected-task();
+    callback edit-task();
+    property <bool> two-lines: item.meta != "";
+    property <bool> closed: item.mark != Mark.open;
+    height: item.kind == RowKind.section ? Theme.section-height
+        : two-lines ? Theme.row-height-meta : Theme.row-height;
+    opacity: root.drag-source ? 0.35 : 1;
+    animate opacity { duration: Theme.drag-fade; easing: ease-out; }
+
+    // Заголовок блока: «Вечер», раздел проекта, день «Планов».
+    if item.kind == RowKind.section: Rectangle {
+        Text {
+            x: Theme.row-padding-x;
+            y: parent.height - self.height - 8px;
+            width: parent.width - self.x - (item.trashable ? 116px : Theme.row-padding-x);
+            overflow: elide;
+            text: item.title;
+            color: Theme.text;
+            font-size: Theme.font-section;
+            font-weight: Theme.weight-semibold;
+        }
+        Rectangle {
+            x: Theme.row-padding-x;
+            y: parent.height - 1px;
+            width: parent.width - 2 * Theme.row-padding-x;
+            height: 1px;
+            background: Theme.separator;
+        }
+    }
+
+    if item.kind == RowKind.other: Text {
+        x: Theme.row-padding-x;
+        width: parent.width - self.x - (item.trashable ? 154px : Theme.row-padding-x);
+        overflow: elide;
+        text: item.title;
+        vertical-alignment: center;
+        height: parent.height;
+        color: Theme.text-muted;
+        font-size: Theme.font-body;
+    }
+
+    if item.trashable && (item.kind == RowKind.section || item.kind == RowKind.other): Button {
+        x: parent.width - self.width - Theme.row-padding-x;
+        y: (parent.height - self.height) / 2;
+        text: root.trash-label;
+        enabled: root.task-actions;
+        clicked => { root.trash(); }
+    }
+
+    if item.kind == RowKind.task || item.kind == RowKind.project || item.kind == RowKind.link: Rectangle {
+        border-radius: Theme.radius;
+        background: root.drop-hover || root.selected ? Theme.editor-selection
+            : (area.enabled && area.has-hover ? Theme.row-hover : transparent);
+        border-width: root.drop-hover ? 1px : 0px;
+        border-color: Theme.accent;
+        animate background, border-width { duration: Theme.drag-fade; easing: ease-out; }
+
+        area := TouchArea {
+            property <bool> moved-drag;
+            enabled: !root.organization-active && ((item.kind != RowKind.task && (item.opens || root.search-result)) || (root.task-actions && item.editable));
+            mouse-cursor: root.drag-source ? MouseCursor.grabbing : self.enabled ? MouseCursor.pointer : MouseCursor.default;
+
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.cancel {
+                    if self.moved-drag { root.drag-release(0px, 0px, false); }
+                    self.moved-drag = false;
+                    return;
+                }
+                if event.button != PointerEventButton.left { return; }
+                if event.kind == PointerEventKind.down { self.moved-drag = false; }
+                if event.kind == PointerEventKind.up && self.moved-drag {
+                    self.moved-drag = false;
+                    root.drag-release(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y, true);
+                }
+            }
+
+            moved => {
+                if !self.pressed || !root.item.draggable || !root.task-actions { return; }
+                if !self.moved-drag
+                    && (abs(self.mouse-x - self.pressed-x) > Theme.drag-threshold
+                        || abs(self.mouse-y - self.pressed-y) > Theme.drag-threshold) {
+                    self.moved-drag = root.drag-begin();
+                }
+                if self.moved-drag {
+                    root.drag-move(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+
+            clicked => {
+                if self.moved-drag { return; }
+                if item.kind != RowKind.task || root.search-result { root.opened(); }
+                else { root.selected-task(); }
+            }
+            double-clicked => {
+                if !self.moved-drag && item.editable && root.task-actions { root.edit-task(); }
+            }
+        }
+        if item.kind == RowKind.task: Rectangle {
+            accessible-role: AccessibleRole.list-item;
+            accessible-label: item.title;
+            accessible-item-selectable: item.editable && root.task-actions;
+            accessible-item-selected: root.selected;
+            accessible-action-default => {
+                if item.editable && root.task-actions {
+                    if root.search-result { root.opened(); } else { root.edit-task(); }
+                }
+            }
+        }
+
+        if item.kind == RowKind.project || item.kind == RowKind.link: Rectangle {
+            accessible-role: AccessibleRole.list-item;
+            accessible-label: item.title;
+            accessible-enabled: (item.opens || root.search-result) && !root.organization-active;
+            accessible-item-selected: root.selected;
+            accessible-action-default => { if (self.accessible-enabled) { root.opened(); } }
+        }
+
+        HorizontalLayout {
+            padding-left: Theme.row-padding-x;
+            padding-right: Theme.row-padding-x;
+            spacing: Theme.gap;
+
+            // Отметка задачи или кольцо проекта.
+            Rectangle {
+                width: Theme.checkbox;
+                if item.kind == RowKind.task: Checkbox {
+                    y: root.two-lines ? 8px : (parent.height - self.height) / 2;
+                    mark: item.mark;
+                    checkable: item.checkable && !root.editing && !root.organization-active;
+                    label: item.title;
+                    toggled => { root.toggled(); }
+                }
+                if item.kind == RowKind.project: Glyph {
+                    y: root.two-lines ? 8px : (parent.height - self.height) / 2;
+                    icon: Icon.project;
+                    size: Theme.checkbox;
+                    progress: item.progress;
+                    mark: item.mark;
+                }
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                HorizontalLayout {
+                    spacing: Theme.gap-small;
+                    if item.star: Star {
+                        width: 14px;
+                        height: 14px;
+                        y: (parent.height - self.height) / 2;
+                    }
+                    if item.when != "": Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        height: when-text.preferred-height + 2px;
+                        width: when-text.preferred-width + 10px;
+                        border-radius: 4px;
+                        background: Theme.sidebar-bg;
+                        when-text := Text {
+                            text: item.when;
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                        }
+                    }
+                    Text {
+                        text: item.title;
+                        horizontal-stretch: 1;
+                        overflow: elide;
+                        vertical-alignment: center;
+                        color: root.closed ? Theme.text-done : Theme.text;
+                        font-size: Theme.font-body;
+                        font-weight: item.kind == RowKind.project ? Theme.weight-semibold : Theme.weight-regular;
+                    }
+                }
+                if root.two-lines: Text {
+                    text: item.meta;
+                    overflow: elide;
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                }
+            }
+
+            if root.selected && item.editable && root.task-actions: Button {
+                text: root.edit-label;
+                clicked => { root.edit-task(); }
+            }
+            if item.trashable && (root.in-trash || root.selected || item.kind == RowKind.project): Button {
+                text: root.trash-label;
+                enabled: root.task-actions;
+                clicked => { root.trash(); }
+            }
+            if item.deadline != "": HorizontalLayout {
+                spacing: 4px;
+                alignment: end;
+                Flag {
+                    y: root.two-lines ? 9px : (parent.height - self.height) / 2;
+                    width: 13px;
+                    height: 13px;
+                    color: item.due ? Theme.due : Theme.text-muted;
+                }
+                Text {
+                    y: root.two-lines ? 7px : 0px;
+                    height: root.two-lines ? self.preferred-height : parent.height;
+                    vertical-alignment: center;
+                    text: item.deadline;
+                    color: item.due ? Theme.due : Theme.text-muted;
+                    font-size: Theme.font-small;
+                    font-weight: item.due ? Theme.weight-semibold : Theme.weight-regular;
+                }
+            }
+        }
+    }
+}
+
+component Toast inherits Rectangle {
+    in property <string> text;
+    property <bool> shown: text != "";
+    width: min(label.preferred-width + 2 * Theme.toast-padding-x, Theme.toast-max-width);
+    height: label.preferred-height + 2 * Theme.toast-padding-y;
+    border-radius: 8px;
+    background: Theme.toast-bg;
+    opacity: shown ? 0.96 : 0;
+    animate opacity { duration: Theme.toast-fade; }
+    accessible-role: AccessibleRole.text;
+    accessible-label: text;
+    label := Text {
+        x: Theme.toast-padding-x;
+        width: parent.width - 2 * Theme.toast-padding-x;
+        text: root.text;
+        wrap: word-wrap;
+        color: Theme.toast-text;
+        font-size: Theme.font-small;
+        vertical-alignment: center;
+    }
+}
+
+export component AppWindow inherits Window {
+    in property <bool> settings-available;
+    callback open-settings();
+    in property <string> window-title;
+    in property <[SideItem]> sidebar;
+    in property <[RowItem]> rows;
+    in property <[PositionedTask]> visible-rows;
+    in property <[PositionedSide]> visible-sidebar;
+    in property <length> task-extent;
+    in property <length> side-extent;
+    in property <int> edit-row-index: -1;
+    in-out property <length> edit-extra-height;
+    in property <bool> empty-evening;
+    in property <string> evening-title;
+    out property <length> task-scroll-y: task-list.content-y;
+    out property <length> side-scroll-y: side-list.content-y;
+    out property <length> task-view-height: task-list.visible-height;
+    out property <length> side-view-height: side-list.visible-height;
+    property <bool> show-empty-evening: root.drag-active && root.empty-evening;
+
+    changed task-scroll-y => { root.viewport-changed(); }
+    changed side-scroll-y => { root.viewport-changed(); }
+    changed task-view-height => { root.constrain-scroll(); root.viewport-changed(); }
+    changed side-view-height => { root.constrain-scroll(); root.viewport-changed(); }
+    changed edit-extra-height => { root.constrain-scroll(); root.viewport-changed(); }
+
+    in property <string> page-title;
+    in property <bool> search-active;
+    in property <string> search-label;
+    in property <string> search-placeholder;
+    in property <string> search-close-label;
+    in property <string> search-status;
+    in property <string> selected-result;
+    in-out property <string> search-text;
+    in property <int> search-length;
+    in property <bool> tag-filter-visible;
+    in property <string> tag-filter-label;
+    in property <[string]> tag-filter-items;
+    in property <int> tag-filter-index;
+    callback search-begin();
+    callback search-end();
+    callback search-query(string);
+    callback search-open(string);
+    callback quick-entry();
+    in property <bool> quick-entry-enabled;
+    callback tag-filter(int);
+    in property <Icon> page-icon;
+    in property <bool> page-icon-visible: true;
+    in property <float> page-progress;
+    in property <string> page-progress-text;
+    in property <OrganizationLabels> organization-labels;
+    in property <RepeatLabels> repeat-labels;
+    in-out property <RepeatDraft> project-repeat-draft;
+    in property <bool> trash-page;
+    in property <bool> trash-nonempty;
+    in property <string> trash-move-label;
+    in property <string> trash-restore-label;
+    in property <string> trash-empty-label;
+    in property <string> trash-confirm-label;
+    callback trash-row(int);
+    callback trash-container();
+    in property <OrganizationPage> organization-page;
+    in property <OrganizationMode> organization-mode;
+    in property <bool> organization-ready;
+    in property <bool> organization-pending;
+    in property <string> organization-prompt;
+    in property <string> organization-error;
+    in-out property <string> organization-name;
+    property <bool> organization-active: organization-mode != OrganizationMode.hidden;
+    property <bool> organization-actions: organization-ready && !organization-active && !search-active && edit-key == "";
+    in property <string> message;
+    in property <bool> drag-active;
+    in property <string> drag-key;
+    in property <string> drag-title;
+    in property <string> drag-highlight;
+    in property <length> drag-line: -1px;
+    property <length> drag-x;
+    property <length> drag-y;
+    property <DropSurface> drag-surface: root.surface-at(drag-x, drag-y);
+    property <length> drag-scroll: drag-surface == DropSurface.list
+        ? root.scroll-step(drag-y - task-list.absolute-position.y, task-list.visible-height)
+        : drag-surface == DropSurface.sidebar
+            ? root.scroll-step(drag-y - side-list.absolute-position.y, side-list.visible-height)
+            : 0px;
+    in property <EditorLabels> editor-labels;
+    in property <string> selected-task;
+    in property <string> edit-key;
+    in property <string> edit-task-id;
+    in property <bool> edit-reopenable;
+    in property <bool> edit-busy;
+    in property <bool> edit-repeat-editable;
+    in property <RepeatDraft> edit-repeat-draft;
+    in property <string> edit-repeat-caption;
+    callback edit-repeat(RepeatDraft, bool) -> string;
+    in property <string> edit-error;
+    in-out property <string> edit-title;
+    in-out property <string> edit-notes;
+    in-out property <string> edit-reminder;
+    in-out property <string> new-tag;
+    in-out property <string> new-check;
+    in property <[EditorCheck]> edit-checklist;
+    in property <[EditorTag]> edit-tags;
+    in property <string> edit-when;
+    in property <string> edit-deadline;
+    in property <string> when-value;
+    in property <string> deadline-value;
+    in property <EditorFocus> editor-focus;
+    in property <int> editor-focus-serial;
+
+    callback select(string);
+    callback toggle(string);
+    callback key(string, bool, bool, bool, bool) -> bool;
+    callback poll();
+    callback organization-begin(OrganizationAction);
+    callback organization-finish(OrganizationSubmit);
+    callback viewport-changed();
+    callback drag-begin(int) -> bool;
+    callback drag-hover(DropSurface, length);
+    callback drag-end(DropSurface, length);
+    callback choose-task(string);
+    callback edit-task(string);
+    callback edit-finish(bool);
+    callback edit-reopen();
+    callback edit-add-tag();
+    callback edit-remove-tag(int);
+    callback edit-add-check();
+    callback edit-remove-check(int);
+    callback edit-check-title(int, string);
+    callback edit-check-done(int, bool);
+    callback edit-date(bool, string) -> string;
+
+    public function focus-list() { keys.focus(); }
+    public function focus-search() {
+        search-field.focus();
+        search-field.set-selection-offsets(root.search-length, root.search-length);
+    }
+    public function reveal-row(top: length, bottom: length) {
+        if top < -task-list.content-y {
+            task-list.content-y = -top;
+        } else if bottom > task-list.visible-height - task-list.content-y {
+            task-list.content-y = task-list.visible-height - bottom;
+        }
+    }
+
+    public function constrain-scroll() {
+        let task-start = min(0px, task-list.visible-height - task-list.content-height);
+        let side-start = min(0px, side-list.visible-height - side-list.content-height);
+        if task-list.content-y < task-start { task-list.content-y = task-start; }
+        if side-list.content-y < side-start { side-list.content-y = side-start; }
+    }
+
+    pure function surface-at(x: length, y: length) -> DropSurface {
+        if x >= side-list.absolute-position.x && x < side-list.absolute-position.x + side-list.visible-width
+            && y >= side-list.absolute-position.y && y < side-list.absolute-position.y + side-list.visible-height {
+            return DropSurface.sidebar;
+        }
+        if x >= task-list.absolute-position.x && x < task-list.absolute-position.x + task-list.visible-width
+            && y >= task-list.absolute-position.y && y < task-list.absolute-position.y + task-list.visible-height {
+            return DropSurface.list;
+        }
+        return DropSurface.none;
+    }
+
+    pure function scroll-step(y: length, height: length) -> length {
+        if y < Theme.drag-edge {
+            return Theme.drag-scroll-step * (1 - y / Theme.drag-edge);
+        }
+        if y > height - Theme.drag-edge {
+            return -Theme.drag-scroll-step * (1 - (height - y) / Theme.drag-edge);
+        }
+        return 0px;
+    }
+
+    pure function content-position(surface: DropSurface, y: length) -> length {
+        return surface == DropSurface.list ? y - task-list.absolute-position.y - task-list.content-y
+            : surface == DropSurface.sidebar ? y - side-list.absolute-position.y - side-list.content-y
+            : -1px;
+    }
+
+    function move-drag(x: length, y: length) {
+        if !root.drag-active { return; }
+        root.drag-x = x;
+        root.drag-y = y;
+        root.drag-hover(root.drag-surface, root.content-position(root.drag-surface, y));
+    }
+
+    function release-drag(x: length, y: length, commit: bool) {
+        if !root.drag-active { return; }
+        let surface = commit ? root.surface-at(x, y) : DropSurface.none;
+        root.drag-end(surface, root.content-position(surface, y));
+    }
+
+    Timer {
+        interval: Theme.drag-tick;
+        running: root.drag-active && root.drag-scroll != 0px;
+        triggered => {
+            if root.drag-surface == DropSurface.list {
+                task-list.content-y = max(min(0px, task-list.visible-height - task-list.content-height),
+                    min(0px, task-list.content-y + root.drag-scroll));
+            } else if root.drag-surface == DropSurface.sidebar {
+                side-list.content-y = max(min(0px, side-list.visible-height - side-list.content-height),
+                    min(0px, side-list.content-y + root.drag-scroll));
+            }
+            root.drag-hover(root.drag-surface, root.content-position(root.drag-surface, root.drag-y));
+        }
+    }
+
+    title: window-title;
+    icon: Theme.app-icon;
+    preferred-width: Theme.window-width;
+    preferred-height: Theme.window-height;
+    min-width: 640px;
+    min-height: 420px;
+    default-font-family: Theme.font;
+    default-font-size: Theme.font-body;
+    background: Theme.window-bg;
+    forward-focus: keys;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            if root.key(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta) {
+                return accept;
+            }
+            reject
+        }
+
+        HorizontalLayout {
+            Rectangle {
+                width: Theme.sidebar-width;
+                background: Theme.sidebar-bg;
+                VerticalLayout {
+                    padding-top: Theme.sidebar-top;
+                    padding-left: Theme.sidebar-padding;
+                    padding-right: Theme.sidebar-padding;
+                    padding-bottom: Theme.sidebar-padding;
+                    spacing: Theme.gap;
+
+                    Button {
+                        text: root.search-label;
+                        enabled: !root.organization-active && root.edit-key == "";
+                        clicked => { root.search-begin(); }
+                    }
+                    side-list := ScrollView {
+                        vertical-stretch: 1;
+                        accessible-role: AccessibleRole.list;
+                        accessible-orientation: Orientation.vertical;
+                        content-width: self.visible-width;
+                        content-height: root.side-extent;
+                        for entry in root.visible-sidebar: SideRow {
+                            y: entry.top;
+                            width: side-list.visible-width;
+                            item: entry.item;
+                            enabled: !root.organization-active;
+                            drop-hover: root.drag-active && root.drag-surface == DropSurface.sidebar
+                                && root.drag-highlight != "" && entry.item.key == root.drag-highlight;
+                            clicked => { root.select(entry.item.key); }
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.separator;
+                    }
+                    VerticalLayout {
+                        spacing: Theme.gap-small;
+                        if root.settings-available: Button {
+                            text: "Настройки";
+                            clicked => { root.open-settings(); }
+                        }
+                        if root.tag-filter-visible: ComboBox {
+                            model: root.tag-filter-items;
+                            current-index: root.tag-filter-index;
+                            accessible-label: root.tag-filter-label;
+                            enabled: root.organization-actions;
+                            selected => { root.tag-filter(self.current-index); }
+                        }
+                        Button {
+                            text: root.organization-labels.add_area;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.add-area); }
+                        }
+                        Button {
+                            text: root.organization-labels.add_project;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.add-project); }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                VerticalLayout {
+                    padding-top: Theme.page-padding-top;
+                    padding-left: Theme.page-padding-x - Theme.row-padding-x;
+                    padding-right: Theme.page-padding-x - Theme.row-padding-x;
+                    spacing: Theme.page-title-gap;
+                    HorizontalLayout {
+                        padding-left: Theme.row-padding-x;
+                        spacing: Theme.gap;
+                        if root.page-icon-visible && !root.search-active: Glyph {
+                            y: (parent.height - self.height) / 2;
+                            icon: root.page-icon;
+                            size: Theme.page-icon;
+                            progress: root.page-progress;
+                        }
+                        if !root.search-active: Text {
+                            text: root.page-title;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                            color: Theme.text;
+                            font-size: Theme.font-page-title;
+                            font-weight: Theme.weight-semibold;
+                            accessible-role: AccessibleRole.text;
+                        }
+                        search-field := LineEdit {
+                            visible: root.search-active;
+                            enabled: root.search-active && root.edit-key == "";
+                            text <=> root.search-text;
+                            placeholder-text: root.search-placeholder;
+                            accessible-label: root.search-label;
+                            edited(value) => { root.search-query(value); }
+                            key-pressed(event) => {
+                                if event.text == Key.Escape || event.text == Key.UpArrow ||
+                                    event.text == Key.DownArrow || event.text == Key.Return || event.text == Key.F5 {
+                                    if root.key(event.text, event.modifiers.control, event.modifiers.shift,
+                                        event.modifiers.alt, event.modifiers.meta) { return accept; }
+                                }
+                                return reject;
+                            }
+                        }
+                        if root.search-active: Button {
+                            text: root.search-close-label;
+                            enabled: root.edit-key == "";
+                            clicked => { root.search-end(); }
+                        }
+                        if root.quick-entry-enabled && !root.search-active: Button {
+                            text: "Быстрый ввод";
+                            clicked => { root.quick-entry(); }
+                        }
+                        if root.page-progress-text != "": Text {
+                            text: root.page-progress-text;
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                            accessible-role: AccessibleRole.text;
+                        }
+                        if root.trash-page && root.trash-nonempty: Button {
+                            text: root.trash-empty-label;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.empty-trash); }
+                        }
+                        if root.organization-page == OrganizationPage.project: Button {
+                            text: root.organization-labels.close_project;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.close-project); }
+                        }
+                    }
+                    if root.organization-page != OrganizationPage.list: HorizontalLayout {
+                        padding-left: Theme.row-padding-x;
+                        padding-right: Theme.row-padding-x;
+                        alignment: start;
+                        spacing: Theme.gap-small;
+                        if root.organization-page == OrganizationPage.area: Button {
+                            text: root.organization-labels.add_area_project;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.add-area-project); }
+                        }
+                        if root.organization-page == OrganizationPage.project: Button {
+                            text: root.organization-labels.add_section;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.add-section); }
+                        }
+                        Button {
+                            text: root.organization-labels.rename;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.rename); }
+                        }
+                    }
+                    if root.organization-page != OrganizationPage.list: HorizontalLayout {
+                        padding-left: Theme.row-padding-x;
+                        padding-right: Theme.row-padding-x;
+                        alignment: start;
+                        spacing: Theme.gap-small;
+                        if root.organization-page == OrganizationPage.project: Button {
+                            text: root.repeat-labels.title;
+                            enabled: root.organization-actions;
+                            clicked => { root.organization-begin(OrganizationAction.repeat-project); }
+                        }
+                        Button {
+                            text: root.trash-move-label;
+                            enabled: root.organization-actions;
+                            clicked => { root.trash-container(); }
+                        }
+                    }
+                    if root.search-status != "": Text {
+                        text: root.search-status;
+                        accessible-role: AccessibleRole.text;
+                        color: Theme.text-muted;
+                        wrap: word-wrap;
+                    }
+                    if root.organization-active: OrganizationEditor {
+                        labels: root.organization-labels;
+                        mode: root.organization-mode;
+                        prompt: root.organization-prompt;
+                        error: root.organization-error;
+                        pending: root.organization-pending;
+                        repeat-labels: root.repeat-labels;
+                        repeat-draft <=> root.project-repeat-draft;
+                        confirm-label: root.trash-confirm-label;
+                        name <=> root.organization-name;
+                        shortcut(event) => { root.key(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta) }
+                        finish(action) => { root.organization-finish(action); }
+                    }
+                    Rectangle {
+                        vertical-stretch: 1;
+                        clip: true;
+                        task-list := ScrollView {
+                            accessible-role: AccessibleRole.list;
+                            accessible-orientation: Orientation.vertical;
+                            content-width: self.visible-width;
+                            content-height: root.task-extent + root.edit-extra-height
+                                + (root.show-empty-evening ? Theme.section-height + Theme.row-height : 0px);
+                            for entry in root.visible-rows: VerticalLayout {
+                                property <RowItem> item: entry.item;
+                                y: entry.top;
+                                width: task-list.visible-width;
+                                height: self.min-height;
+                                TaskRow {
+                                    item: item;
+                                    selected: root.search-active ? item.row-key == root.selected-result
+                                        : item.kind == RowKind.task && item.row-key == root.selected-task;
+                                    search-result: root.search-active;
+                                    editing: root.edit-task-id != "" && item.key == root.edit-task-id;
+                                    organization-active: root.organization-active || (root.search-active && root.edit-key != "");
+                                    task-actions: root.edit-key == "" && !root.organization-active;
+                                    edit-label: root.editor-labels.edit;
+                                    in-trash: root.trash-page;
+                                    trash-label: root.trash-page ? root.trash-restore-label : root.trash-move-label;
+                                    trash => { root.trash-row(entry.index); }
+                                    drag-source: root.drag-active && item.row-key == root.drag-key;
+                                    drop-hover: root.drag-active && root.drag-surface == DropSurface.list
+                                        && root.drag-highlight != "" && item.key == root.drag-highlight;
+                                    drag-begin => { root.drag-begin(entry.index) }
+                                    drag-move(x, y) => { root.move-drag(x, y); }
+                                    drag-release(x, y, commit) => { root.release-drag(x, y, commit); }
+                                    toggled => { root.toggle(item.key); }
+                                    opened => { if root.search-active { root.search-open(item.row-key); } else { root.select(item.key); } }
+                                    selected-task => { root.choose-task(item.row-key); }
+                                    edit-task => { root.edit-task(item.row-key); }
+                                }
+                                if item.kind == RowKind.task && root.edit-key != "" && item.row-key == root.edit-key: TaskEditor {
+                                    init => { root.edit-extra-height = self.height; }
+                                    changed height => { root.edit-extra-height = self.height; }
+                                    labels: root.editor-labels;
+                                    busy: root.edit-busy;
+                                    repeat-editable: root.edit-repeat-editable;
+                                    repeat-labels: root.repeat-labels;
+                                    repeat-draft: root.edit-repeat-draft;
+                                    repeat-caption: root.edit-repeat-caption;
+                                    set-repeat(draft, clear) => { root.edit-repeat(draft, clear) }
+                                    reopenable: root.edit-reopenable;
+                                    error: root.edit-error;
+                                    title-text <=> root.edit-title;
+                                    notes-text <=> root.edit-notes;
+                                    reminder-text <=> root.edit-reminder;
+                                    check-input <=> root.new-check;
+                                    tag-input <=> root.new-tag;
+                                    checklist: root.edit-checklist;
+                                    tags: root.edit-tags;
+                                    when-text: root.edit-when;
+                                    deadline-text: root.edit-deadline;
+                                    when-value: root.when-value;
+                                    deadline-value: root.deadline-value;
+                                    focus-target: root.editor-focus;
+                                    focus-serial: root.editor-focus-serial;
+                                    shortcut(event) => { root.key(event.text, event.modifiers.control, event.modifiers.shift, event.modifiers.alt, event.modifiers.meta) }
+                                    finish(save) => { root.edit-finish(save); }
+                                    reopen => { root.edit-reopen(); }
+                                    add-tag => { root.edit-add-tag(); }
+                                    remove-tag(index) => { root.edit-remove-tag(index); }
+                                    add-check => { root.edit-add-check(); }
+                                    remove-check(index) => { root.edit-remove-check(index); }
+                                    check-title(index, text) => { root.edit-check-title(index, text); }
+                                    check-done(index, done) => { root.edit-check-done(index, done); }
+                                    set-date(deadline, text) => { root.edit-date(deadline, text) }
+                                }
+                            }
+                            if root.show-empty-evening: Rectangle {
+                                y: root.task-extent;
+                                width: task-list.visible-width;
+                                height: Theme.section-height + Theme.row-height;
+                                Text {
+                                    x: Theme.row-padding-x;
+                                    y: Theme.section-height - self.height - Theme.row-padding-x;
+                                    text: root.evening-title;
+                                    color: Theme.text;
+                                    font-size: Theme.font-section;
+                                    font-weight: Theme.weight-semibold;
+                                    accessible-role: AccessibleRole.text;
+                                }
+                                Rectangle {
+                                    x: Theme.row-padding-x;
+                                    y: Theme.section-height - 1px;
+                                    width: parent.width - 2 * Theme.row-padding-x;
+                                    height: 1px;
+                                    background: Theme.separator;
+                                }
+                            }
+                        }
+                        Rectangle {
+                            x: Theme.row-padding-x;
+                            y: min(parent.height - Theme.drag-line, max(0px, root.drag-line + task-list.content-y - Theme.drag-line / 2));
+                            width: parent.width - 2 * Theme.row-padding-x;
+                            height: Theme.drag-line;
+                            border-radius: Theme.drag-line / 2;
+                            background: Theme.accent;
+                            visible: root.drag-active && root.drag-surface == DropSurface.list && root.drag-line >= 0px
+                                && root.drag-line + task-list.content-y >= 0px
+                                && root.drag-line + task-list.content-y <= parent.height;
+                        }
+                    }
+                }
+                Toast {
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - self.height - Theme.toast-margin;
+                    text: root.message;
+                }
+            }
+        }
+
+        DragPreview {
+            z: 10;
+            x: max(0px, min(parent.width - self.width, root.drag-x + Theme.gap));
+            y: max(0px, min(parent.height - self.height, root.drag-y + Theme.gap));
+            active: root.drag-active;
+            text: root.drag-title;
+        }
+    }
+}

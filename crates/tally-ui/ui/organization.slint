@@ -1,0 +1,113 @@
+import { Button, LineEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { RepeatFields } from "repeat.slint";
+import { RepeatDraft, RepeatLabels } from "types.slint";
+import { OrganizationLabels, OrganizationMode, OrganizationSubmit } from "types.slint";
+
+component OrganizationName inherits LineEdit {
+    init => { self.focus(); }
+}
+
+export component OrganizationEditor inherits Rectangle {
+    in property <OrganizationLabels> labels;
+    in property <OrganizationMode> mode;
+    in property <string> prompt;
+    in property <string> error;
+    in property <bool> pending;
+    in-out property <string> name;
+    in-out property <RepeatDraft> repeat-draft;
+    in property <RepeatLabels> repeat-labels;
+    in property <string> confirm-label;
+    callback finish(OrganizationSubmit);
+    callback shortcut(KeyEvent) -> bool;
+
+    height: content.preferred-height;
+    background: Theme.editor-bg;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.separator;
+
+    content := VerticalLayout {
+        padding: Theme.editor-padding;
+        spacing: Theme.gap-small;
+
+        Text {
+            text: root.prompt;
+            color: Theme.text;
+            font-weight: Theme.weight-semibold;
+            wrap: word-wrap;
+            accessible-role: AccessibleRole.text;
+        }
+
+        if root.mode == OrganizationMode.title: OrganizationName {
+            text <=> root.name;
+            placeholder-text: root.labels.title;
+            accessible-label: root.labels.title;
+            enabled: !root.pending;
+            accepted => { root.finish(OrganizationSubmit.save); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    root.finish(OrganizationSubmit.dismiss);
+                    return accept;
+                }
+                if event.text == Key.F5 && root.shortcut(event) {
+                    return accept;
+                }
+                return reject;
+            }
+        }
+
+        if root.mode == OrganizationMode.repeat: RepeatFields {
+            labels: root.repeat-labels;
+            draft <=> root.repeat-draft;
+            enabled: !root.pending;
+            applied => { root.finish(OrganizationSubmit.save); }
+            shortcuts(event) => {
+                if event.text == Key.Escape { root.finish(OrganizationSubmit.dismiss); return true; }
+                return root.shortcut(event);
+            }
+        }
+
+        if root.error != "": Text {
+            text: root.error;
+            color: Theme.due;
+            wrap: word-wrap;
+            accessible-role: AccessibleRole.text;
+        }
+
+        HorizontalLayout {
+            alignment: start;
+            spacing: Theme.gap-small;
+            if root.mode == OrganizationMode.confirm: Button {
+                text: root.confirm-label;
+                enabled: !root.pending;
+                clicked => { root.finish(OrganizationSubmit.save); }
+            }
+            if root.mode == OrganizationMode.repeat: Button {
+                text: root.repeat-labels.clear;
+                enabled: !root.pending;
+                clicked => { root.finish(OrganizationSubmit.clear); }
+            }
+            if root.mode == OrganizationMode.title || root.mode == OrganizationMode.repeat: Button {
+                text: root.labels.save;
+                enabled: !root.pending;
+                clicked => { root.finish(OrganizationSubmit.save); }
+            }
+            if root.mode == OrganizationMode.close: Button {
+                text: root.labels.complete;
+                enabled: !root.pending;
+                clicked => { root.finish(OrganizationSubmit.complete); }
+            }
+            if root.mode == OrganizationMode.close: Button {
+                text: root.labels.cancel-project;
+                enabled: !root.pending;
+                clicked => { root.finish(OrganizationSubmit.cancel-project); }
+            }
+            Button {
+                text: root.labels.dismiss;
+                enabled: !root.pending;
+                clicked => { root.finish(OrganizationSubmit.dismiss); }
+            }
+        }
+    }
+}

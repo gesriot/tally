@@ -1,0 +1,28 @@
+import { Theme } from "theme.slint";
+
+export component DragPreview inherits Rectangle {
+    in property <bool> active;
+    in property <string> text;
+
+    width: Theme.drag-preview-width;
+    height: Theme.drag-preview-height;
+    opacity: active ? 1 : 0;
+    animate opacity { duration: Theme.drag-fade; easing: ease-out; }
+    background: Theme.editor-bg;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.accent;
+    drop-shadow-blur: Theme.gap;
+    drop-shadow-offset-y: Theme.drag-line;
+    drop-shadow-color: Theme.text.with-alpha(0.16);
+
+    Text {
+        x: Theme.gap;
+        width: parent.width - 2 * Theme.gap;
+        height: parent.height;
+        text: root.text;
+        overflow: elide;
+        color: Theme.text;
+        vertical-alignment: center;
+    }
+}

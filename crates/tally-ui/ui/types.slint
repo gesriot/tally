@@ -1,0 +1,134 @@
+// Строки боковой панели и списка – их собирает Rust (`view.rs`).
+
+export enum SideKind { list, gap, area, project }
+
+export enum Icon { inbox, today, upcoming, anytime, someday, logbook, trash, area, project }
+
+export enum RowKind { task, project, link, section, other }
+
+export enum Mark { open, completed, canceled }
+
+export enum DropSurface { none, list, sidebar }
+
+export struct SideItem {
+    kind: SideKind,
+    nested: bool,
+    key: string,
+    title: string,
+    count: string,
+    due: bool,
+    selected: bool,
+    icon: Icon,
+    progress: float,
+}
+
+export struct RowItem {
+    kind: RowKind,
+    key: string,
+    title: string,
+    when: string,
+    meta: string,
+    deadline: string,
+    due: bool,
+    mark: Mark,
+    checkable: bool,
+    opens: bool,
+    editable: bool,
+    row-key: string,
+    draggable: bool,
+    reopenable: bool,
+    trashable: bool,
+    star: bool,
+    progress: float,
+}
+
+export struct PositionedTask {
+    index: int,
+    top: length,
+    item: RowItem,
+}
+
+export struct PositionedSide {
+    top: length,
+    item: SideItem,
+}
+
+export enum OrganizationPage { list, area, project }
+export enum OrganizationMode { hidden, title, close, repeat, confirm }
+export enum OrganizationAction { add-area, add-project, add-area-project, add-section, rename, close-project, repeat-project, empty-trash }
+export enum OrganizationSubmit { save, dismiss, complete, cancel-project, clear }
+
+export struct OrganizationLabels {
+    add-area: string,
+    add-project: string,
+    add-area-project: string,
+    add-section: string,
+    rename: string,
+    close-project: string,
+    rename-area: string,
+    rename-project: string,
+    title: string,
+    save: string,
+    dismiss: string,
+    complete: string,
+    cancel-project: string,
+}
+
+export struct RepeatDraft {
+    interval: string,
+    unit: int,
+    mode: int,
+}
+
+export struct RepeatLabels {
+    title: string,
+    interval: string,
+    unit: string,
+    mode: string,
+    units: [string],
+    modes: [string],
+    apply: string,
+    clear: string,
+}
+
+export enum EditorFocus { title, when, deadline, checklist, tags }
+
+export struct EditorCheck {
+    title: string,
+    done: bool,
+}
+
+export struct EditorTag {
+    title: string,
+    slot: int,
+}
+
+export struct EditorLabels {
+    edit: string,
+    title: string,
+    notes: string,
+    checklist: string,
+    check-item: string,
+    new-check: string,
+    tags: string,
+    new-tag: string,
+    add: string,
+    add-check: string,
+    add-tag: string,
+    remove: string,
+    save: string,
+    reopen: string,
+    saving: string,
+    cancel: string,
+    apply: string,
+    clear: string,
+    when-label: string,
+    deadline-label: string,
+    date-hint: string,
+    date-input: string,
+    today: string,
+    tomorrow: string,
+    evening: string,
+    anytime: string,
+    someday: string,
+}

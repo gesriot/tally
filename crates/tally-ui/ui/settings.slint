@@ -1,0 +1,124 @@
+import { Button, CheckBox, ComboBox, LineEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+component SettingHeading inherits Text {
+    color: Theme.text;
+    font-size: Theme.font-section;
+    font-weight: Theme.weight-semibold;
+}
+
+export component SettingsWindow inherits Window {
+    title: "Настройки";
+    icon: Theme.app-icon;
+    default-font-family: Theme.font;
+    default-font-size: Theme.font-body;
+    background: Theme.window-bg;
+    preferred-width: 548px;
+    min-width: 460px;
+
+    in property <bool> ready;
+    in property <bool> busy;
+    in property <int> appearance;
+    in property <bool> automatic-backups;
+    in property <string> backup-directory;
+    in property <string> backup-error;
+    in property <string> status;
+    in property <bool> status-error;
+    in-out property <string> json-path;
+    callback set-appearance(int);
+    callback set-automatic-backups(bool);
+    callback import-json();
+    callback export-json();
+    callback dismiss();
+    public function restore-controls(mode: int, backups: bool) {
+        theme-picker.current-index = mode;
+        backup-toggle.checked = backups;
+    }
+
+    VerticalLayout {
+        padding: 24px;
+        spacing: 18px;
+        Text {
+            text: "Настройки";
+            color: Theme.text;
+            font-size: Theme.font-page-title;
+            font-weight: Theme.weight-semibold;
+        }
+        VerticalLayout {
+            spacing: Theme.gap-small;
+            SettingHeading { text: "Оформление"; }
+            theme-picker := ComboBox {
+                accessible-label: "Тема";
+                model: ["Как в системе", "Светлая", "Тёмная"];
+                current-index: root.appearance;
+                enabled: root.ready && !root.busy;
+                selected => { root.set-appearance(self.current-index); }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.separator; }
+        VerticalLayout {
+            spacing: Theme.gap-small;
+            SettingHeading { text: "Импорт и экспорт"; }
+            LineEdit {
+                accessible-label: "Путь к JSON";
+                placeholder-text: "Путь к файлу .json";
+                text <=> root.json-path;
+                enabled: root.ready && !root.busy;
+                key-pressed(event) => {
+                    if event.text == Key.Escape {
+                        root.dismiss();
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+            HorizontalLayout {
+                alignment: start;
+                spacing: Theme.gap-small;
+                Button {
+                    text: "Импортировать";
+                    enabled: root.ready && !root.busy && root.json-path != "";
+                    clicked => { root.import-json(); }
+                }
+                Button {
+                    text: "Экспортировать";
+                    enabled: root.ready && !root.busy && root.json-path != "";
+                    clicked => { root.export-json(); }
+                }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.separator; }
+        VerticalLayout {
+            spacing: Theme.gap-small;
+            SettingHeading { text: "Резервные копии"; }
+            backup-toggle := CheckBox {
+                text: "Создавать ежедневную копию базы";
+                checked: root.automatic-backups;
+                enabled: root.ready && !root.busy;
+                toggled => { root.set-automatic-backups(self.checked); }
+            }
+            LineEdit {
+                accessible-label: "Папка резервных копий";
+                text: root.backup-directory;
+                read-only: true;
+            }
+            if root.backup-error != "": Text {
+                text: root.backup-error;
+                color: Theme.due;
+                wrap: word-wrap;
+            }
+        }
+        if root.status != "": Text {
+            text: root.status;
+            color: root.status-error ? Theme.due : Theme.text-muted;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                text: "Закрыть";
+                clicked => { root.dismiss(); }
+            }
+        }
+    }
+}

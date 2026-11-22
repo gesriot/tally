@@ -1,0 +1,95 @@
+import { Palette } from "std-widgets.slint";
+
+export global Theme {
+    public function set-appearance(mode: int) {
+        Palette.color-scheme = mode == 1 ? ColorScheme.light
+            : mode == 2 ? ColorScheme.dark : ColorScheme.unknown;
+    }
+    property <color> widget-background: Palette.background;
+    out property <bool> dark: widget-background.to-oklch().lightness < 0.5;
+
+    // Значок приложения: окна и (в `desktop.slint`) трей. Файлы готовит
+    // `scripts/make-icons.py` из `assets/icon.png`.
+    out property <image> app-icon: @image-url("../../../assets/icon-window.png");
+
+    out property <color> window-bg: dark ? #191d24 : #fcfcfd;
+    out property <color> sidebar-bg: dark ? #20252e : #f0f2f6;
+    out property <color> sidebar-selected: dark ? #364359 : #dae3f3;
+    out property <color> sidebar-hover: dark ? #2b3341 : #e5e9f0;
+    out property <color> text: dark ? #edf0f6 : #202631;
+    out property <color> text-muted: dark ? #a4afc0 : #5b6576;
+    out property <color> text-done: dark ? #98a4b5 : #697385;
+    out property <color> accent: dark ? #86aaff : #275fd1;
+    out property <color> due: dark ? #ff8795 : #b83045;
+    out property <color> star: dark ? #ffd06e : #a86d00;
+    out property <color> evening: dark ? #b4a5ff : #5a52ba;
+    out property <color> separator: dark ? #373f4d : #dee3eb;
+    out property <color> checkbox-border: dark ? #8492a8 : #778397;
+    out property <color> checkbox-done: dark ? #86aaff : #275fd1;
+    out property <color> checkbox-canceled: dark ? #64728a : #667287;
+    out property <color> row-hover: dark ? #242b37 : #eff3fa;
+    out property <color> editor-selection: dark ? #2c3a53 : #e5edf9;
+    out property <color> editor-bg: dark ? #242e3f : #f4f7fc;
+    out property <color> toast-bg: dark ? #e5ecf9 : #282f3c;
+    out property <color> toast-text: dark ? #222938 : #ffffff;
+    out property <color> mark-text: dark ? #151e32 : #ffffff;
+    out property <color> icon-inbox: dark ? #85b5ff : #2c6ac4;
+    out property <color> icon-today: dark ? #ffd06e : #a86d00;
+    out property <color> icon-upcoming: dark ? #ff8f9d : #bb3e52;
+    out property <color> icon-anytime: dark ? #85d7b1 : #257556;
+    out property <color> icon-someday: dark ? #e3ae83 : #8a5b37;
+    out property <color> icon-logbook: dark ? #9bd4a5 : #327345;
+    out property <color> icon-trash: dark ? #abb7c7 : #637184;
+    out property <color> icon-area: dark ? #9eb4cc : #53677e;
+    out property <color> icon-project: dark ? #86aaff : #275fd1;
+
+    // Шрифт и размеры текста.
+    out property <string> font: "Inter";
+    out property <length> font-page-title: 28px;
+    out property <length> font-body: 14px;
+    out property <length> font-small: 12px;
+    out property <length> font-section: 15px;
+    out property <length> font-sidebar: 14px;
+    out property <int> weight-regular: 400;
+    out property <int> weight-semibold: 600;
+
+    // Отступы и размеры.
+    out property <length> sidebar-width: 248px;
+    out property <length> sidebar-padding: 10px;
+    out property <length> sidebar-top: 18px;
+    out property <length> sidebar-project-indent: 16px;
+    out property <length> side-row-height: 30px;
+    out property <length> side-gap-height: 14px;
+    out property <length> page-padding-x: 44px;
+    out property <length> page-padding-top: 34px;
+    out property <length> page-title-gap: 18px;
+    out property <length> row-height: 34px;
+    out property <length> row-height-meta: 48px;
+    out property <length> section-height: 44px;
+    out property <length> row-padding-x: 8px;
+    out property <length> editor-padding: 12px;
+    out property <length> editor-notes-height: 92px;
+    out property <length> editor-popup-width: 352px;
+    out property <length> gap: 10px;
+    out property <length> gap-small: 6px;
+    out property <length> radius: 6px;
+    out property <length> checkbox: 17px;
+    out property <length> icon: 16px;
+    out property <length> page-icon: 24px;
+    out property <length> project-ring-stroke: 1.8px;
+    out property <length> drag-threshold: 6px;
+    out property <length> drag-edge: 42px;
+    out property <length> drag-scroll-step: 14px;
+    out property <length> drag-line: 2px;
+    out property <length> drag-preview-width: 255px;
+    out property <length> drag-preview-height: 35px;
+    out property <duration> drag-tick: 16ms;
+    out property <duration> drag-fade: 130ms;
+    out property <length> toast-padding-x: 16px;
+    out property <length> toast-padding-y: 10px;
+    out property <length> toast-margin: 22px;
+    out property <length> toast-max-width: 560px;
+    out property <duration> toast-fade: 180ms;
+    out property <length> window-width: 1000px;
+    out property <length> window-height: 680px;
+}

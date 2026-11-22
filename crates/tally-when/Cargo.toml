@@ -1,0 +1,21 @@
+[package]
+name = "tally-when"
+description = "Разбор русских выражений даты для Tally: «завтра», «пт», «через 3 дня», «вечером»"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+jiff.workspace = true
+tally-core.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

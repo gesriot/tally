@@ -1,0 +1,21 @@
+[package]
+name = "tally-core"
+description = "Модель данных Tally и правила списков: без I/O и без now()"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+jiff.workspace = true
+serde.workspace = true
+tally-rank.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

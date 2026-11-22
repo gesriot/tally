@@ -1,0 +1,6 @@
+# Единые окончания строк во всех ОС: в репозитории и в рабочей папке – LF.
+* text=auto eol=lf
+
+*.png binary
+*.ttf binary
+*.ico binary

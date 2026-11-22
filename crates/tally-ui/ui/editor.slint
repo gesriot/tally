@@ -1,0 +1,386 @@
+import { Button, CheckBox, LineEdit, TextEdit } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { EditorLabels, EditorCheck, EditorTag, EditorFocus } from "types.slint";
+
+import { RepeatFields } from "repeat.slint";
+import { RepeatDraft, RepeatLabels } from "types.slint";
+
+export component TaskEditor inherits Rectangle {
+    in property <EditorLabels> labels;
+    in property <bool> busy;
+    in property <bool> repeat-editable;
+    in property <RepeatLabels> repeat-labels;
+    in property <RepeatDraft> repeat-draft;
+    in property <string> repeat-caption;
+    property <RepeatDraft> local-repeat;
+    property <string> repeat-error;
+    callback set-repeat(RepeatDraft, bool) -> string;
+    in property <bool> reopenable;
+    in property <string> error;
+    in-out property <string> title-text;
+    in-out property <string> notes-text;
+    in-out property <string> reminder-text;
+    in-out property <string> check-input;
+    in-out property <string> tag-input;
+    in property <[EditorCheck]> checklist;
+    in property <[EditorTag]> tags;
+    in property <string> when-text;
+    in property <string> deadline-text;
+    in property <string> when-value;
+    in property <string> deadline-value;
+    in property <EditorFocus> focus-target;
+    in property <int> focus-serial;
+
+    callback shortcut(KeyEvent) -> bool;
+    callback finish(bool);
+    callback reopen();
+    callback add-tag();
+    callback remove-tag(int);
+    callback add-check();
+    callback remove-check(int);
+    callback check-title(int, string);
+    callback check-done(int, bool);
+    callback set-date(bool, string) -> string;
+
+    property <bool> editing-deadline;
+    property <string> date-text;
+    property <string> date-error;
+
+    width: 100%;
+    height: content.preferred-height;
+    background: Theme.editor-bg;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.separator;
+
+    init => { title-field.focus(); }
+
+    changed focus-serial => {
+        if !busy {
+            if focus-target == EditorFocus.when { root.open-date(false); }
+            if focus-target == EditorFocus.deadline { root.open-date(true); }
+            if focus-target == EditorFocus.tags { tag-field.focus(); }
+            if focus-target == EditorFocus.checklist { check-field.focus(); }
+        }
+    }
+
+    function field-key(event: KeyEvent) -> EventResult {
+        if (event.modifiers.control || event.text == Key.Escape || event.text == Key.F5) && root.shortcut(event) {
+            return accept;
+        }
+        return reject;
+    }
+
+    function open-date(deadline: bool) {
+        root.editing-deadline = deadline;
+        root.date-text = deadline ? root.deadline-value : root.when-value;
+        root.date-error = "";
+        picker.show();
+    }
+
+    function apply-date(text: string) {
+        root.date-error = root.set-date(root.editing-deadline, text);
+        if root.date-error == "" { picker.close(); }
+    }
+
+    content := VerticalLayout {
+        padding: Theme.editor-padding;
+        spacing: Theme.gap-small;
+
+        title-field := LineEdit {
+            text <=> root.title-text;
+            placeholder-text: labels.title;
+            accessible-label: labels.title;
+            key-pressed(event) => { root.field-key(event) }
+            enabled: !busy;
+        }
+        TextEdit {
+            text <=> root.notes-text;
+            placeholder-text: labels.notes;
+            accessible-label: labels.notes;
+            key-pressed(event) => { root.field-key(event) }
+            wrap: word-wrap;
+            height: Theme.editor-notes-height;
+            enabled: !busy;
+        }
+
+        Text {
+            text: labels.checklist;
+            color: Theme.text;
+            font-weight: Theme.weight-semibold;
+        }
+        for item[index] in root.checklist: HorizontalLayout {
+            spacing: Theme.gap-small;
+            CheckBox {
+                checked: item.done;
+                accessible-label: labels.check-item + " " + item.title;
+                enabled: !busy;
+                toggled => { root.check-done(index, self.checked); }
+            }
+            LineEdit {
+                text: item.title;
+                accessible-label: labels.check-item;
+                key-pressed(event) => { root.field-key(event) }
+                enabled: !busy;
+                edited(value) => { root.check-title(index, value); }
+            }
+            Button {
+                text: labels.remove;
+                accessible-label: labels.remove + " " + item.title;
+                enabled: !busy;
+                clicked => { root.remove-check(index); }
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.gap-small;
+            check-field := LineEdit {
+                text <=> root.check-input;
+                placeholder-text: labels.new-check;
+                accessible-label: labels.new-check;
+                key-pressed(event) => { root.field-key(event) }
+                enabled: !busy;
+                accepted => { root.add-check(); }
+            }
+            Button {
+                text: labels.add;
+                accessible-label: labels.add-check;
+                enabled: !busy && root.check-input != "";
+                clicked => { root.add-check(); }
+            }
+        }
+
+        Text {
+            text: labels.tags;
+            color: Theme.text;
+            font-weight: Theme.weight-semibold;
+        }
+        for tag in root.tags: HorizontalLayout {
+            spacing: Theme.gap-small;
+            Text {
+                text: tag.title;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                overflow: elide;
+                color: Theme.text;
+            }
+            Button {
+                text: labels.remove;
+                accessible-label: labels.remove + " " + tag.title;
+                enabled: !busy;
+                clicked => { root.remove-tag(tag.slot); }
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.gap-small;
+            tag-field := LineEdit {
+                text <=> root.tag-input;
+                placeholder-text: labels.new-tag;
+                accessible-label: labels.new-tag;
+                key-pressed(event) => { root.field-key(event) }
+                enabled: !busy;
+                accepted => { root.add-tag(); }
+            }
+            Button {
+                text: labels.add;
+                accessible-label: labels.add-tag;
+                enabled: !busy && root.tag-input != "";
+                clicked => { root.add-tag(); }
+            }
+        }
+
+        date-buttons := HorizontalLayout {
+            spacing: Theme.gap-small;
+            Button {
+                text: root.when-text;
+                accessible-label: labels.when-label;
+                enabled: !busy;
+                clicked => { root.open-date(false); }
+            }
+            Button {
+                text: root.deadline-text;
+                accessible-label: labels.deadline-label;
+                enabled: !busy;
+                clicked => { root.open-date(true); }
+            }
+        }
+        HorizontalLayout {
+            spacing: Theme.gap-small;
+            Text {
+                text: "Напомнить";
+                color: Theme.text;
+                vertical-alignment: center;
+            }
+            LineEdit {
+                text <=> root.reminder-text;
+                enabled: !root.busy;
+                placeholder-text: "ДД.ММ.ГГГГ ЧЧ:ММ";
+                accessible-label: "Дата и время напоминания";
+                key-pressed(event) => { return root.field-key(event); }
+            }
+        }
+        if root.repeat-editable: HorizontalLayout {
+            alignment: start;
+            Button {
+                text: root.repeat-caption;
+                accessible-label: root.repeat-labels.title;
+                enabled: !root.busy;
+                clicked => {
+                    root.local-repeat = root.repeat-draft;
+                    root.repeat-error = "";
+                    repeat-picker.show();
+                }
+            }
+        }
+        if root.error != "": Text {
+            text: root.error;
+            accessible-role: AccessibleRole.text;
+            accessible-label: root.error;
+            color: Theme.due;
+            wrap: word-wrap;
+        }
+        if root.reopenable: HorizontalLayout {
+            alignment: start;
+            Button {
+                text: labels.reopen;
+                enabled: !busy;
+                clicked => { root.reopen(); }
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: Theme.gap-small;
+            Button {
+                text: labels.cancel;
+                enabled: !busy;
+                clicked => { root.finish(false); }
+            }
+            Button {
+                text: busy ? labels.saving : labels.save;
+                primary: true;
+                enabled: !busy;
+                clicked => { root.finish(true); }
+            }
+        }
+    }
+
+    repeat-picker := PopupWindow {
+        x: Theme.editor-padding;
+        y: date-buttons.y;
+        width: Theme.editor-popup-width;
+        height: repeat-content.preferred-height;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: Theme.window-bg;
+            border-color: Theme.separator;
+            border-width: 1px;
+            border-radius: Theme.radius;
+            repeat-content := VerticalLayout {
+                padding: Theme.editor-padding;
+                spacing: Theme.gap-small;
+                RepeatFields {
+                    labels: root.repeat-labels;
+                    draft <=> root.local-repeat;
+                    shortcuts(event) => {
+                        if event.text == Key.Escape { repeat-picker.close(); return true; }
+                        return root.shortcut(event);
+                    }
+                    applied => {
+                        root.repeat-error = root.set-repeat(root.local-repeat, false);
+                        if root.repeat-error == "" { repeat-picker.close(); }
+                    }
+                }
+                if root.repeat-error != "": Text {
+                    text: root.repeat-error;
+                    color: Theme.due;
+                    accessible-role: AccessibleRole.text;
+                }
+                HorizontalLayout {
+                    spacing: Theme.gap-small;
+                    Button {
+                        text: root.repeat-labels.clear;
+                        clicked => { root.set-repeat(root.local-repeat, true); repeat-picker.close(); }
+                    }
+                    Button {
+                        text: root.repeat-labels.apply;
+                        primary: true;
+                        clicked => {
+                            root.repeat-error = root.set-repeat(root.local-repeat, false);
+                            if root.repeat-error == "" { repeat-picker.close(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    picker := PopupWindow {
+        x: Theme.editor-padding;
+        y: date-buttons.y + date-buttons.height;
+        width: Theme.editor-popup-width;
+        height: popup-content.preferred-height;
+        close-policy: close-on-click-outside;
+        FocusScope {
+            forward-focus: date-field;
+            init => { date-field.focus(); }
+            key-pressed(event) => {
+                if event.text == Key.Escape {
+                    picker.close();
+                    return accept;
+                }
+                reject
+            }
+
+            Rectangle {
+                background: Theme.window-bg;
+                border-width: 1px;
+                border-color: Theme.separator;
+                border-radius: Theme.radius;
+                popup-content := VerticalLayout {
+                    padding: Theme.editor-padding;
+                    spacing: Theme.gap-small;
+                    Text {
+                        text: root.editing-deadline ? labels.deadline-label : labels.when-label;
+                        color: Theme.text;
+                        font-weight: Theme.weight-semibold;
+                    }
+                    date-field := LineEdit {
+                        text <=> root.date-text;
+                        placeholder-text: labels.date-hint;
+                        accessible-label: labels.date-input;
+                        accepted(value) => { root.apply-date(value); }
+                    }
+                    HorizontalLayout {
+                        spacing: Theme.gap-small;
+                        Button { text: labels.today; clicked => { root.apply-date(labels.today); } }
+                        Button { text: labels.tomorrow; clicked => { root.apply-date(labels.tomorrow); } }
+                        if !root.editing-deadline: Button {
+                            text: labels.evening;
+                            clicked => { root.apply-date(labels.evening); }
+                        }
+                    }
+                    if !root.editing-deadline: HorizontalLayout {
+                        spacing: Theme.gap-small;
+                        Button { text: labels.anytime; clicked => { root.apply-date(labels.anytime); } }
+                        Button { text: labels.someday; clicked => { root.apply-date(labels.someday); } }
+                    }
+                    if root.date-error != "": Text {
+                        text: root.date-error;
+                        color: Theme.due;
+                        wrap: word-wrap;
+                    }
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: Theme.gap-small;
+                        Button { text: labels.clear; clicked => { root.apply-date(""); } }
+                        Button { text: labels.cancel; clicked => { picker.close(); } }
+                        Button {
+                            text: labels.apply;
+                            primary: true;
+                            clicked => { root.apply-date(root.date-text); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
