@@ -389,10 +389,24 @@ fn launch_window(path: &Path, id: Uuid) -> Result<Child> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, MutexGuard, PoisonError};
+
     use super::*;
+
+    /// Тесты модуля проверяют блокировки файлов сразу после их освобождения и
+    /// запускают дочерний процесс. В Unix дочерний процесс до `exec` держит
+    /// копии всех дескрипторов родителя, а с ними и блокировки `flock`, так что
+    /// запуск в одном тесте ненадолго удерживал блокировку, которую соседний
+    /// тест уже отпустил. Поэтому тесты модуля идут по одному.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    fn serial() -> MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 
     #[test]
     fn two_cold_clients_wait_for_the_same_window() -> Result<()> {
+        let _serial = serial();
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("tally.db");
         let root = dir.path().join("ipc");
@@ -425,6 +439,7 @@ mod tests {
 
     #[test]
     fn an_expired_wait_leaves_the_child_and_other_replies_alone() -> Result<()> {
+        let _serial = serial();
         let dir = tempfile::tempdir()?;
         let desktop = Desktop::in_directory(&dir.path().join("tally.db"), dir.path())?;
         let expired_id = Uuid::new_v4();
@@ -471,6 +486,7 @@ mod tests {
 
     #[test]
     fn startup_failure_replies_to_queued_clients_before_releasing_the_owner() -> Result<()> {
+        let _serial = serial();
         let dir = tempfile::tempdir()?;
         let desktop = Desktop::in_directory(&dir.path().join("tally.db"), dir.path())?;
         let owner = desktop.claim(Show::Window)?.context("владелец")?;
@@ -500,6 +516,7 @@ mod tests {
 
     #[test]
     fn removes_only_expired_reply_records() -> Result<()> {
+        let _serial = serial();
         let dir = tempfile::tempdir()?;
         let desktop = Desktop::in_directory(&dir.path().join("tally.db"), dir.path())?;
         let expired_id = Uuid::new_v4();
@@ -528,6 +545,7 @@ mod tests {
 
     #[test]
     fn forwards_activation_and_acknowledges_on_the_instance_that_owns_the_database() -> Result<()> {
+        let _serial = serial();
         let dir = tempfile::tempdir()?;
         let path = dir.path().join("tally.db");
         let root = dir.path().join("ipc");
